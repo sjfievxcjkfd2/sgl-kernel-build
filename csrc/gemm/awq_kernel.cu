@@ -168,8 +168,8 @@ __global__ void __launch_bounds__(256) dequantize_weights(
 // Single instruction dual-channel operation
 #pragma unroll
     for (int i = 0; i < 4; ++i) {  // uint4 = 4 * nv_bfloat162
-      nv_bfloat162 diff = __hsub2(weight_vec[i], zero_vec[i]);
-      weight_vec[i] = __hmul2(diff, scale_vec[i]);
+      weight_vec[i].x = (weight_vec[i].x - zero_vec[i].x) * scale_vec[i].x;
+      weight_vec[i].y = (weight_vec[i].y - zero_vec[i].y) * scale_vec[i].y;
     }
 
     // Directly store to OutputT array (guaranteed contiguous memory)
