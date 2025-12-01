@@ -1,0 +1,125 @@
+name: Build sgl-kernel
+on:
+  workflow_dispatch:
+
+jobs:
+  build-torch212-cu121:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build wheel
+        env:
+          TORCH_CUDA_ARCH_LIST: "8.9"
+        run: |
+          docker run --rm -i \
+            -v "${GITHUB_WORKSPACE}":/io \
+            -w /io \
+            pytorch/manylinux-builder:cuda12.1 \
+            bash -c '
+              set -eux
+              
+              echo "=== Find Python 3.10 ==="
+              PYBIN=$(ls -d /opt/python/cp310-*/bin 2>/dev/null | head -n1)
+              test -n "$PYBIN" || { echo "ERROR: Python 3.10 not found"; exit 1; }
+              PY="$PYBIN/python"
+              PIP="$PYBIN/pip"
+              $PY --version
+              
+              echo "=== Fix pyproject.toml ==="
+              sed -i "s/wheel.py-api.*=.*\"cp39\"/wheel.py-api = \"cp310\"/g" pyproject.toml
+              grep "wheel.py-api" pyproject.toml
+              
+              echo "=== Install PyTorch 2.1.2 ==="
+              $PIP install --no-cache-dir \
+                --index-url https://download.pytorch.org/whl/cu121 \
+                torch==2.1.2 2>&1 | tail -20
+              
+              echo "=== Install build tools ==="
+              $PIP install --no-cache-dir cmake setuptools wheel scikit-build-core
+              
+              echo "=== Clean previous builds ==="
+              rm -rf build _skbuild dist *.egg-info
+              mkdir -p /io/dist
+              
+              echo "=== Build wheel ==="
+              export TORCH_CUDA_ARCH_LIST="8.9"
+              export CMAKE_GENERATOR="Unix Makefiles"
+              export MAKEFLAGS="-j2"
+              
+              $PY -m pip wheel . \
+                --no-deps \
+                --no-build-isolation \
+                --wheel-dir /io/dist \
+                -vv
+              
+              echo "=== Build completed ==="
+              ls -lh /io/dist/
+            '
+      
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: sgl-kernel-torch212-cu121-sm89
+          path: dist/*.whl
+        
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            **/*.log
+
+  build-torch212-cu121-abi0:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build wheel with ABI=0
+        env:
+          TORCH_CUDA_ARCH_LIST: "8.9"
+          CXXFLAGS: "-D_GLIBCXX_USE_CXX11_ABI=0"
+        run: |
+          docker run --rm -i \
+            -v "${GITHUB_WORKSPACE}":/io \
+            -w /io \
+            -e CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
+            pytorch/manylinux-builder:cuda12.1 \
+            bash -c '
+              set -eux
+              
+              PYBIN=$(ls -d /opt/python/cp310-*/bin 2>/dev/null | head -n1)
+              PY="$PYBIN/python"
+              PIP="$PYBIN/pip"
+              
+              sed -i "s/wheel.py-api.*=.*\"cp39\"/wheel.py-api = \"cp310\"/g" pyproject.toml
+              
+              $PIP install --no-cache-dir \
+                --index-url https://download.pytorch.org/whl/cu121 \
+                torch==2.1.2 2>&1 | tail -20
+              
+              $PIP install --no-cache-dir cmake setuptools wheel scikit-build-core
+              
+              rm -rf build _skbuild dist_abi0 *.egg-info
+              mkdir -p /io/dist_abi0
+              
+              export TORCH_CUDA_ARCH_LIST="8.9"
+              export CMAKE_GENERATOR="Unix Makefiles"
+              export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=0"
+              export MAKEFLAGS="-j2"
+              
+              $PY -m pip wheel . \
+                --no-deps \
+                --no-build-isolation \
+                --wheel-dir /io/dist_abi0 \
+                -vv
+              
+              ls -lh /io/dist_abi0/
+            '
+      
+      - name: Upload wheel ABI=0
+        uses: actions/upload-artifact@v4
+        with:
+          name: sgl-kernel-torch212-cu121-sm89-abi0
+          path: dist_abi0/*.whl
