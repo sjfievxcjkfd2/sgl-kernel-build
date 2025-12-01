@@ -3,10 +3,8 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda.h>
 #include <cuda_fp16.h>
-#include <torch/all.h>
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 #include <cuda_bf16.h>
-#endif
+#include <torch/all.h>
 
 template <int lut>
 __device__ inline int lop3(int a, int b, int c) {
